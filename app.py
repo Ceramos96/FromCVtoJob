@@ -54,4 +54,5 @@ Output only these sections, preceded by its exact delimiter, no code fences:
 ===COVER===
 <content>
 ===HR===
-<content
+<content>
+"""
