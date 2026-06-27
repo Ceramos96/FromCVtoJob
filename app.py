@@ -9,7 +9,7 @@ from PIL import Image
 from fpdf import FPDF
 
 # ============================================================================
-# 0. CẤU HÌNH HỆ THỐNG & THEME CHUẨN ĐƠN GIẢN (MOODY FOREST & BACKGROUND)
+# 0. CẤU HÌNH HỆ THỐNG & THEME MINIMAL (MOODY FOREST #9AA07D & BACKGROUND #FAF7F0)
 # ============================================================================
 st.set_page_config(page_title="FromCVtoJob", page_icon="🌿", layout="wide")
 
@@ -30,7 +30,7 @@ FONT_PATH = "DejaVuSans.ttf"
 FONT_URL = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
 
 # ============================================================================
-# 1. MASTER SYSTEM PROMPT (TƯ DUY SENIOR+2 & KHUNG MCKINSEY)
+# 1. MASTER SYSTEM PROMPT (TƯ DUY ĐỊNH VỊ SENIOR+2 & BỘ CÂU HỎI MCKINSEY)
 # ============================================================================
 SYSTEM_PROMPT = """IDENTITY. You are FromCVtoJob — a senior executive recruiter, ATS specialist, and personal-branding writer with 20 years across multinationals and Vietnamese local markets. You write the way strong candidates write: specific, results-first, zero filler. You never sound like an LLM. You write native idiomatic English and native natural Vietnamese — never machine-translated.
 
@@ -57,7 +57,7 @@ Output only these sections, each preceded by its exact delimiter on its own line
 <Department head round with strategic items>"""
 
 # ============================================================================
-# 2. CORE ENGINES (RATE LIMIT, VISION OCR, PARSING, PDF)
+# 2. CORE ENGINES (RATE LIMIT, VISION OCR, PARSING, PDF EXPORT)
 # ============================================================================
 def init_gemini(model_name):
     api_key = st.secrets.get("GEMINI_API_KEY", "")
@@ -84,7 +84,7 @@ def check_rate_limit():
     st.session_state.req_count += 1
 
 def extract_text_via_vision(uploaded_file):
-    """Sử dụng Vision của Gemini để trích xuất text trực tiếp từ ảnh/PDF scan không cần Tesseract"""
+    """Sử dụng Vision của Gemini để trích xuất dữ liệu trực tiếp, bẻ gãy sự phức tạp của Tesseract"""
     check_rate_limit()
     model = genai.GenerativeModel('gemini-3.5-flash')
     img = Image.open(uploaded_file)
@@ -133,7 +133,7 @@ def export_suite_to_pdf(markdown_text):
     return bytes(pdf.output())
 
 # ============================================================================
-# 3. LUỒNG GIAO DIỆN STATE MACHINE (STEPPER)
+# 3. LUỒNG GIAO DIỆN STATE MACHINE CHẶT CHẼ
 # ============================================================================
 if 'step' not in st.session_state: st.session_state.step = 1
 if 'cv_text' not in st.session_state: st.session_state.cv_text = ""
@@ -142,50 +142,50 @@ if 'case_output' not in st.session_state: st.session_state.case_output = ""
 if 'answers' not in st.session_state: st.session_state.answers = ""
 
 st.title("🌿 FromCVtoJob — Advanced Career Architect")
-st.markdown("<p style='color:#74726a; margin-top:-15px;'>Hệ thống tạo hồ sơ ứng tuyển song ngữ, may đo theo chiến lược Senior+2</p>", unsafe_allow_html=True)
+st.markdown("<p style='color:#74726a; margin-top:-15px;'>Hệ thống thiết kế hồ sơ ứng tuyển song ngữ, may đo theo chiến lược Senior+2</p>", unsafe_allow_html=True)
 
-# Stepper thanh tiến trình trực quan
+# Stepper ngang
 steps_desc = ["1. Nhập liệu đầu vào", "2. Câu hỏi đòn bẩy", "3. Bản đồ chiến lược", "4. May đo & Xuất file"]
 st.progress(st.session_state.step / 4, text=steps_desc[st.session_state.step - 1])
 st.divider()
 
-# Cấu hình Mô hình cao cấp thế hệ mới tại Sidebar
-model_choice = st.sidebar.radio("Mô hình xử lý cao cấp (2026):", ["Gemini 3.5 Flash (Tốc độ & Agent mượt)", "Gemini 3.1 Pro (Tư duy sâu & Phản biện sắc)"])
+# Sidebar - Quản lý mô hình thế hệ mới
+model_choice = st.sidebar.radio("Mô hình xử lý cao cấp (2026):", ["Gemini 3.5 Flash (Tốc độ & Sửa ảnh mượt)", "Gemini 3.1 Pro (Tư duy sâu & Phản biện sắc)"])
 selected_model = "gemini-3.5-flash" if "3.5" in model_choice else "gemini-3.1-pro"
 
-# --- BƯỚC 1: NHẬP LIỆU ---
+# --- BƯỚC 1: INPUT ---
 if st.session_state.step == 1:
     st.subheader("📋 Bước 1: Cung cấp thông tin nền tảng")
     col1, col2 = st.columns(2)
     with col1:
         jd = st.text_area("Job Description (JD) mục tiêu: *", height=220, placeholder="Dán nguyên văn tin tuyển dụng để AI bóc tách từ khóa...")
-        company = st.text_area("Hồ sơ / Thông tin công ty (Tùy chọn):", height=100, placeholder="Môi trường, văn hóa hoặc dự án của công ty ứng tuyển...")
+        company = st.text_area("Hồ sơ / Thông tin công ty (Tùy chọn):", height=100, placeholder="Môi trường, văn hóa hoặc định hướng của doanh nghiệp...")
     with col2:
         file = st.file_uploader("Tải lên CV hiện tại (Hỗ trợ Ảnh chụp/PDF/Docx - Tối đa 2MB)", type=['pdf', 'png', 'jpg', 'jpeg', 'docx'])
-        extra_req = st.text_input("Yêu cầu định dạng riêng biệt (Tùy chọn):", placeholder="Ví dụ: Tiêu đề IN HOA, in đậm các mốc số liệu KPI...")
+        extra_req = st.text_input("Yêu cầu định dạng bổ sung (Tùy chọn):", placeholder="Ví dụ: Định dạng chữ thường, gạch đầu dòng ngắn, highlight số liệu...")
         
     if st.button("Phân tích & Đặt câu hỏi →"):
         if not jd:
-            st.error("Vui lòng nhập nội dung Job Description (JD) để tiếp tục.")
+            st.error("Vui lòng nhập nội dung Job Description (JD) trước khi xử lý.")
         else:
-            with st.spinner("Đang chạy OCR trích xuất dữ liệu gốc..."):
+            with st.spinner("Đang trích xuất dữ liệu gốc bằng AI..."):
                 if file and (file.type.startswith("image") or file.name.lower().endswith(('.png', '.jpg', '.jpeg'))):
                     st.session_state.cv_text = extract_text_via_vision(file)
                 else:
-                    st.session_state.cv_text = "Ứng viên chưa cung cấp CV cũ (Tạo mới từ đầu)."
+                    st.session_state.cv_text = "Ứng viên chưa cung cấp CV cũ (Hồ sơ tạo mới hoàn toàn)."
                 st.session_state.jd = jd
                 st.session_state.company = company
                 st.session_state.extra_req = extra_req
                 st.session_state.step = 2
                 st.rerun()
 
-# --- BƯỚC 2: CÂU HỎI LÀM RÕ (CALIBRATE) ---
+# --- BƯỚC 2: CALIBRATE ---
 elif st.session_state.step == 2:
-    st.subheader("🎯 Bước 2: Câu hỏi làm rõ dữ liệu từ chuyên gia")
-    st.markdown("<p style='color:#74726a;'>AI phát hiện các khoảng trống thông tin để làm nổi bật số liệu định lượng (KPI, quy mô, ngân sách) của bạn.</p>", unsafe_allow_html=True)
+    st.subheader("🎯 Bước 2: Câu hỏi làm rõ dữ liệu từ chuyên gia tuyển dụng")
+    st.markdown("<p style='color:#74726a;'>Hệ thống tìm kiếm các khoảng trống thông tin để tối ưu hóa dữ liệu định lượng (KPI, quy mô, ngân sách) đạt chuẩn Senior.</p>", unsafe_allow_html=True)
     
-    q1 = st.text_input("1. Quy mô nhân sự hoặc ngân sách ($/%) lớn nhất bạn từng chịu trách nhiệm / phối hợp là bao nhiêu?", placeholder="Ví dụ: Quản lý team 8 người, ngân sách dự án 50,000 USD...")
-    q2 = st.text_input("2. Điểm khác biệt hoặc thành tựu lớn nhất bạn tự tin mang đến vị trí này là gì?", placeholder="Ví dụ: Đã từng tối ưu hóa quy trình giúp giảm thời gian triển khai xuống 20%...")
+    q1 = st.text_input("1. Quy mô nhân sự hoặc ngân sách ($/%) lớn nhất bạn từng trực tiếp xử lý/phối hợp là bao nhiêu?", placeholder="Ví dụ: Dẫn dắt nhóm 10 người, tối ưu hóa quy trình dự án quy mô 100k USD...")
+    q2 = st.text_input("2. Thành tựu lớn nhất bạn đạt được đi kèm với chỉ số đo lường cụ thể nào?", placeholder="Ví dụ: Tăng 20% hiệu suất vận hành trong vòng 6 tháng...")
     
     col_b1, col_b2 = st.columns([1, 5])
     with col_b1:
@@ -194,84 +194,99 @@ elif st.session_state.step == 2:
             st.rerun()
     with col_b2:
         if st.button("Lưu & Tạo bản thiết kế chiến lược →"):
-            st.session_state.answers = f"Quy mô/Ngân sách: {q1}. Điểm mạnh lõi: {q2}"
+            st.session_state.answers = f"Quy mô/Ngân sách: {q1}. Thành tích định lượng: {q2}"
             st.session_state.step = 3
             st.rerun()
 
-# --- BƯỚC 3: ĐIỂM KIỂM CHIẾN LƯỢC ---
+# --- BƯỚC 3: STRATEGY CHECKPOINT (ĐÃ SỬA LỖI RESOURCE EXHAUSTED) ---
 elif st.session_state.step == 3:
     st.subheader("🎯 Bước 3: Sơ đồ khoảng cách chiến lược (Gap Map)")
     
-    with st.spinner("Đang xây dựng Narrative Hook định vị Senior+2..."):
-        model = init_gemini(selected_model)
-        prompt_strat = f"Hãy tạo một bảng phân tích chiến lược: 3-5 điểm mạnh, 1-2 điểm thiếu hụt so với JD, danh sách từ khóa ATS chuẩn ngành, và 1 đoạn Narrative Hook (2-3 câu định vị Senior+2). JD: {st.session_state.jd}, CV: {st.session_state.cv_text}, Trả lời bổ sung: {st.session_state.answers}"
-        strat_res = model.generate_content(prompt_strat).text
-        st.info(strat_res)
+    # Cơ chế phòng vệ Quota: Chỉ gọi API nếu chưa tồn tại dữ liệu cache trong session_state
+    if "strat_res_cache" not in st.session_state:
+        with st.spinner("Đang xây dựng sơ đồ khoảng cách ứng tuyển và định vị Senior+2..."):
+            model = init_gemini(selected_model)
+            prompt_strat = f"Hãy tạo một bảng phân tích chiến lược: 3-5 điểm mạnh, 1-2 điểm thiếu hụt so với JD, danh sách từ khóa ATS chuẩn ngành, và 1 đoạn Narrative Hook (2-3 câu định vị Senior+2). JD: {st.session_state.jd}, CV: {st.session_state.cv_text}, Trả lời bổ sung: {st.session_state.answers}"
+            
+            time.sleep(1) # Khoảng nghỉ chống nghẽn RPM
+            st.session_state.strat_res_cache = model.generate_content(prompt_strat).text
+
+    # Render dữ liệu từ Cache an toàn, không gọi lại API khi bấm nút
+    st.info(st.session_state.strat_res_cache)
         
     col_c1, col_c2 = st.columns([1, 5])
     with col_c1:
         if st.button("← Khảo sát lại"):
+            if "strat_res_cache" in st.session_state:
+                del st.session_state.strat_res_cache
             st.session_state.step = 2
             st.rerun()
     with col_c2:
-        if st.button("Đồng ý — Tiến hành dựng bộ hồ sơ ứng tuyển hoàn chỉnh 🔥"):
-            with st.spinner("Đang thiết lập bộ hồ sơ song ngữ & Case Study chuyên sâu (Vui lòng đợi vài giây)..."):
-                # Call 1: Tạo bộ hồ sơ cốt lõi (CV, Cover Letter, Interview Kit)
+        if st.button("Đồng ý — Tiến hành tạo toàn bộ hồ sơ ứng tuyển hoàn chỉnh 🔥"):
+            with st.spinner("Đang thiết lập bộ hồ sơ song ngữ & Case Study chuyên sâu..."):
+                model = init_gemini(selected_model)
+                
+                # Call 1: Tạo bộ tài liệu chính
                 build_prompt = f"Tạo bộ hồ sơ ứng tuyển theo đúng cấu trúc OUTPUT CONTRACT từ dữ liệu: JD: {st.session_state.jd}, CV: {st.session_state.cv_text}, Câu trả lời: {st.session_state.answers}. Hãy tuân thủ yêu cầu định dạng này: {st.session_state.extra_req}"
                 st.session_state.raw_output = model.generate_content(build_prompt).text
                 
-                # Call 2: Tạo bộ 3 Case Study độc lập (Giữ cho UI nhẹ, tránh lỗi phản hồi quá dài từ mô hình Pro)
+                time.sleep(2) # Giãn cách 2 giây bảo vệ Quota TPM trước khi gọi tiếp bài toán nặng
+                
+                # Call 2: Tạo bộ 3 bài toán Case Study độc lập
                 case_prompt = f"Dựa trên JD: {st.session_state.jd}, hãy thiết kế ĐÚNG 3 bài toán Case Study cấp cao thực tế trong 6 tháng đầu việc. Mỗi case tuân thủ cấu trúc: Đề bài, Phân tích (Framework), Giải pháp mẫu (STAR), và 3 câu hỏi phản biện."
                 st.session_state.case_output = model.generate_content(case_prompt).text
                 
                 st.session_state.step = 4
                 st.rerun()
 
-# --- BƯỚC 4: PREVIEW, EDIT & EXPORT (SPLIT VIEW) ---
+# --- BƯỚC 4: PREVIEW, MANUAL EDIT & EXPORT (SPLIT VIEW) ---
 elif st.session_state.step == 4:
-    st.subheader("✨ Bước 4: Tinh chỉnh & Xuất thành phẩm")
+    st.subheader("✨ Bước 4: Tinh chỉnh thủ công & Xuất thành phẩm")
     
     parsed_suite = parse_application_suite(st.session_state.raw_output)
     
-    tab_cv, tab_cover, tab_interview, tab_case = st.tabs(["📄 CV 1 Trang (Split View)", "✉️ Thư xin việc (Cover Letter)", "💬 Kịch bản phỏng vấn 60 phút", "💼 Case Studies Thực địa"])
+    tab_cv, tab_cover, tab_interview, tab_case = st.tabs(["📄 CV 1 Trang (Split View)", "✉️ Thư xin việc (Cover Letter)", "💬 Kịch bản phỏng vấn 60 phút", "💼 Case Studies Cấp cao"])
     
     with tab_cv:
         col_ed, col_pre = st.columns(2)
         with col_ed:
             st.markdown("##### ✏️ Trình biên tập văn bản (Sửa trực tiếp bên dưới)")
-            cv_edit = st.text_area("Nội dung CV (Markdown Format):", value=parsed_suite["CV"] if parsed_suite["CV"] else st.session_state.raw_output, height=450, label_visibility="collapsed")
+            cv_edit = st.text_area("Nội dung CV (Markdown Format):", value=parsed_suite["CV"] if parsed_suite["CV"] else st.session_state.raw_output, height=480, label_visibility="collapsed")
         with col_pre:
             st.markdown("##### 👁️ Live Preview (Bản xem trước chuẩn in ấn)")
-            st.markdown(f"<div style='background-color:#fff; padding:20px; border:1px solid #e8e3d7; border-radius:8px; color:#2c2c27;'>{cv_edit}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color:#fff; padding:22px; border:1px solid #e8e3d7; border-radius:8px; color:#2c2c27;'>{cv_edit}</div>", unsafe_allow_html=True)
             
     with tab_cover:
         cover_edit = st.text_area("Sửa nội dung Cover Letter (<1000 ký tự):", value=parsed_suite["COVER"], height=300)
         
     with tab_interview:
-        st.markdown("### 💬 Chuẩn bị kịch bản phản biện theo từng cấp độ")
+        st.markdown("### 💬 Chuẩn bị kịch bản phản biện theo cấp độ doanh nghiệp")
         st.markdown(f"#### 👥 Vòng 1: Nhân sự (HR Round)\n{parsed_suite['HR']}")
         st.markdown(f"#### 👔 Vòng 2: Sếp trực tiếp (Manager Round)\n{parsed_suite['MANAGER']}")
         st.markdown(f"#### 🎯 Vòng 3: Trưởng bộ phận (Department Head Round)\n{parsed_suite['HEAD']}")
         
     with tab_case:
-        st.markdown("### 💼 Tình huống Case Study thực địa (Độ khó cấp Senior)")
-        with st.expander("🔍 Nhấp để mở rộng danh sách 3 Case Study & Gợi ý khung giải pháp STAR"):
+        st.markdown("### 💼 Tình huống thực địa kinh doanh (Senior Level)")
+        with st.expander("🔍 Nhấp để mở rộng chi tiết 3 Case Study & Khung giải pháp STAR phản biện"):
             st.markdown(st.session_state.case_output)
 
-    # --- HỆ THỐNG XUẤT FILE TỔNG HỢP ---
+    # --- HỆ THỐNG NÚT EXPORT KHÔNG LƯU TRỮ TRÊN SERVER ---
     st.divider()
-    st.write("### 💾 Lưu trữ dữ liệu ứng tuyển (Không lưu trên server)")
+    st.write("### 💾 Tải xuống kết quả thành phẩm")
     
-    # Gom toàn bộ nội dung hiện hành để đóng gói tệp tải về
-    full_export_content = f"# BỘ HỒ SƠ ỨNG TUYỂN CHIẾN LƯỢC\n\n## 1. CV CHI TIẾT\n{cv_edit}\n\n## 2. COVER LETTER\n{cover_edit}\n\n## 3. KỊCH BẢN PHỎNG VẤN VÀ SUITE CÂU HỎI CRITICAL THINKING\n{st.session_state.raw_output}\n\n## 4. CASE STUDIES CHIẾN LƯỢC\n{st.session_state.case_output}"
+    # Khối dữ liệu hợp nhất để đóng gói tệp
+    full_export_content = f"# BỘ HỒ SƠ ỨNG TUYỂN CHIẾN LƯỢC\n\n## 1. CV CHI TIẾT\n{cv_edit}\n\n## 2. COVER LETTER\n{cover_edit}\n\n## 3. KỊCH BẢN PHỎNG VẤN HỆ THỐNG\n{st.session_state.raw_output}\n\n## 4. BỘ CASE STUDY THỰC ĐỊA\n{st.session_state.case_output}"
     
     col_d1, col_d2, col_d3 = st.columns(3)
     with col_d1:
-        st.download_button("⬇️ Tải file thô Markdown (.md)", data=full_export_content, file_name="FromCVtoJob_Suite.md", mime="text/markdown")
+        st.download_button("⬇️ Tải file thô định dạng Markdown (.md)", data=full_export_content, file_name="FromCVtoJob_FinalSuite.md", mime="text/markdown")
     with col_d2:
         pdf_data = export_suite_to_pdf(full_export_content)
-        st.download_button("⬇️ Xuất bản sạch PDF (.pdf)", data=pdf_data, file_name="FromCVtoJob_Suite.pdf", mime="application/pdf")
+        st.download_button("⬇️ Xuất bản sạch PDF (.pdf)", data=pdf_data, file_name="FromCVtoJob_FinalSuite.pdf", mime="application/pdf")
     with col_d3:
-        if st.button("🔄 Thiết lập lại hồ sơ mới"):
-            st.session_state.step = 1
+        if st.button("🔄 Làm hồ sơ mới từ đầu"):
+            # Xóa sạch trạng thái phiên cũ để khởi động lại
+            for key in ["step", "cv_text", "raw_output", "case_output", "answers", "strat_res_cache"]:
+                if key in st.session_state:
+                    del st.session_state[key]
             st.rerun()
