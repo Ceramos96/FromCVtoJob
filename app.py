@@ -57,7 +57,7 @@ Output only these sections, each preceded by its exact delimiter on its own line
 <Department head round with strategic items>"""
 
 # ============================================================================
-# 2. CORE ENGINES (RATE LIMIT, VISION OCR, PARSING, PDF EXPORT)
+# 2. CORE ENGINES (RATE LIMIT, VISION OCR, PARSING, CLEAN TEXT, PDF EXPORT)
 # ============================================================================
 def init_gemini(model_name):
     api_key = st.secrets.get("GEMINI_API_KEY", "")
@@ -84,7 +84,7 @@ def check_rate_limit():
     st.session_state.req_count += 1
 
 def extract_text_via_vision(uploaded_file):
-    """Sử dụng Vision của Gemini để trích xuất dữ liệu trực tiếp, bẻ gãy sự phức tạp của Tesseract"""
+    """Sử dụng Vision của Gemini để trích xuất dữ liệu trực tiếp từ ảnh/PDF scan"""
     check_rate_limit()
     model = genai.GenerativeModel('gemini-3.5-flash')
     img = Image.open(uploaded_file)
@@ -103,6 +103,17 @@ def parse_application_suite(raw_text):
             parsed_data[sec] = parts[i + 1].strip()
     return parsed_data
 
+def clean_txt_for_pdf(text):
+    """Khử toàn bộ emoji và chuẩn hóa ký tự lạ tránh lỗi FPDF Unicode Encoding"""
+    if not text:
+        return ""
+    # Chuẩn hóa các dấu ngoặc kép và gạch ngang đặc biệt từ AI sinh ra
+    text = text.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
+    text = text.replace("–", "-").replace("—", "-")
+    # Loại bỏ các emoji hoặc ký tự đồ họa lạ ngoài bảng mã Latin/Unicode tiếng Việt
+    text = re.sub(r'[^\x00-\x7F\u00C0-\u1EF9\s\-\.\,\:\!\?\'\"\(\)\_\+\=\/\@\#\$\%\^\&\*]', '', text)
+    return text
+
 @st.cache_resource(show_spinner=False)
 def ensure_unicode_font():
     if not os.path.exists(FONT_PATH):
@@ -114,22 +125,36 @@ def export_suite_to_pdf(markdown_text):
     pdf = FPDF(format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
-    font_file = ensure_unicode_font()
-    font_family = "DejaVuSans" if font_file else "Helvetica"
-    if font_file: pdf.add_font("DejaVuSans", "", font_file)
     
-    pdf.set_font(font_family, size=11)
+    font_file = ensure_unicode_font()
+    if font_file:
+        pdf.add_font("DejaVuSans", style="", fname=font_file)
+        font_family = "DejaVuSans"
+    else:
+        font_family = "Helvetica"
+    
+    pdf.set_font(font_family, style="", size=11)
     usable_w = pdf.w - pdf.l_margin - pdf.r_margin
     
-    for line in markdown_text.split("\n"):
+    # Khử sạch ký tự lỗi mã hóa trước khi ghi vào PDF
+    cleaned_markdown = clean_txt_for_pdf(markdown_text)
+    
+    for line in cleaned_markdown.split("\n"):
         line = line.rstrip()
-        if not line: pdf.ln(4); continue
+        if not line: 
+            pdf.ln(4)
+            continue
         if line.startswith("# "):
-            pdf.set_font(font_family, size=15); pdf.multi_cell(usable_w, 8, line[2:]); pdf.set_font(font_family, size=11)
+            pdf.set_font(font_family, style="", size=15)
+            pdf.multi_cell(usable_w, 8, line[2:])
+            pdf.set_font(font_family, style="", size=11)
         elif line.startswith("## "):
-            pdf.set_font(font_family, size=13); pdf.multi_cell(usable_w, 7, line[3:]); pdf.set_font(font_family, size=11)
+            pdf.set_font(font_family, style="", size=13)
+            pdf.multi_cell(usable_w, 7, line[3:])
+            pdf.set_font(font_family, style="", size=11)
         else:
-            pdf.multi_cell(usable_w, 6, line.replace("**", ""))
+            display_line = line.replace("**", "")
+            pdf.multi_cell(usable_w, 6, display_line)
     return bytes(pdf.output())
 
 # ============================================================================
@@ -144,12 +169,12 @@ if 'answers' not in st.session_state: st.session_state.answers = ""
 st.title("🌿 FromCVtoJob — Advanced Career Architect")
 st.markdown("<p style='color:#74726a; margin-top:-15px;'>Hệ thống thiết kế hồ sơ ứng tuyển song ngữ, may đo theo chiến lược Senior+2</p>", unsafe_allow_html=True)
 
-# Stepper ngang
+# Thanh tiến trình Stepper
 steps_desc = ["1. Nhập liệu đầu vào", "2. Câu hỏi đòn bẩy", "3. Bản đồ chiến lược", "4. May đo & Xuất file"]
 st.progress(st.session_state.step / 4, text=steps_desc[st.session_state.step - 1])
 st.divider()
 
-# Sidebar - Quản lý mô hình thế hệ mới
+# Cấu hình Mô hình tại Sidebar
 model_choice = st.sidebar.radio("Mô hình xử lý cao cấp (2026):", ["Gemini 3.5 Flash (Tốc độ & Sửa ảnh mượt)", "Gemini 3.1 Pro (Tư duy sâu & Phản biện sắc)"])
 selected_model = "gemini-3.5-flash" if "3.5" in model_choice else "gemini-3.1-pro"
 
@@ -198,20 +223,19 @@ elif st.session_state.step == 2:
             st.session_state.step = 3
             st.rerun()
 
-# --- BƯỚC 3: STRATEGY CHECKPOINT (ĐÃ SỬA LỖI RESOURCE EXHAUSTED) ---
+# --- BƯỚC 3: STRATEGY CHECKPOINT (KHẮC PHỤC LỖI RESOURCE EXHAUSTED CỦA GEMINI API) ---
 elif st.session_state.step == 3:
     st.subheader("🎯 Bước 3: Sơ đồ khoảng cách chiến lược (Gap Map)")
     
-    # Cơ chế phòng vệ Quota: Chỉ gọi API nếu chưa tồn tại dữ liệu cache trong session_state
+    # Chỉ gọi API duy nhất một lần, lưu vào Cache của phiên
     if "strat_res_cache" not in st.session_state:
         with st.spinner("Đang xây dựng sơ đồ khoảng cách ứng tuyển và định vị Senior+2..."):
             model = init_gemini(selected_model)
             prompt_strat = f"Hãy tạo một bảng phân tích chiến lược: 3-5 điểm mạnh, 1-2 điểm thiếu hụt so với JD, danh sách từ khóa ATS chuẩn ngành, và 1 đoạn Narrative Hook (2-3 câu định vị Senior+2). JD: {st.session_state.jd}, CV: {st.session_state.cv_text}, Trả lời bổ sung: {st.session_state.answers}"
             
-            time.sleep(1) # Khoảng nghỉ chống nghẽn RPM
+            time.sleep(1)  # Giãn cách 1 giây bảo vệ RPM
             st.session_state.strat_res_cache = model.generate_content(prompt_strat).text
 
-    # Render dữ liệu từ Cache an toàn, không gọi lại API khi bấm nút
     st.info(st.session_state.strat_res_cache)
         
     col_c1, col_c2 = st.columns([1, 5])
@@ -226,20 +250,20 @@ elif st.session_state.step == 3:
             with st.spinner("Đang thiết lập bộ hồ sơ song ngữ & Case Study chuyên sâu..."):
                 model = init_gemini(selected_model)
                 
-                # Call 1: Tạo bộ tài liệu chính
+                # Lượt gọi 1: Dựng hồ sơ nền tảng
                 build_prompt = f"Tạo bộ hồ sơ ứng tuyển theo đúng cấu trúc OUTPUT CONTRACT từ dữ liệu: JD: {st.session_state.jd}, CV: {st.session_state.cv_text}, Câu trả lời: {st.session_state.answers}. Hãy tuân thủ yêu cầu định dạng này: {st.session_state.extra_req}"
                 st.session_state.raw_output = model.generate_content(build_prompt).text
                 
-                time.sleep(2) # Giãn cách 2 giây bảo vệ Quota TPM trước khi gọi tiếp bài toán nặng
+                time.sleep(2)  # Nghỉ 2 giây để reset cửa sổ hạn mức TPM/RPM của Google
                 
-                # Call 2: Tạo bộ 3 bài toán Case Study độc lập
+                # Lượt gọi 2: Tạo bộ Case Study độc lập
                 case_prompt = f"Dựa trên JD: {st.session_state.jd}, hãy thiết kế ĐÚNG 3 bài toán Case Study cấp cao thực tế trong 6 tháng đầu việc. Mỗi case tuân thủ cấu trúc: Đề bài, Phân tích (Framework), Giải pháp mẫu (STAR), và 3 câu hỏi phản biện."
                 st.session_state.case_output = model.generate_content(case_prompt).text
                 
                 st.session_state.step = 4
                 st.rerun()
 
-# --- BƯỚC 4: PREVIEW, MANUAL EDIT & EXPORT (SPLIT VIEW) ---
+# --- BƯỚC 4: PREVIEW, MANUAL EDIT & EXPORT (SPLIT VIEW SONG SONG) ---
 elif st.session_state.step == 4:
     st.subheader("✨ Bước 4: Tinh chỉnh thủ công & Xuất thành phẩm")
     
@@ -267,14 +291,14 @@ elif st.session_state.step == 4:
         
     with tab_case:
         st.markdown("### 💼 Tình huống thực địa kinh doanh (Senior Level)")
-        with st.expander("🔍 Nhấp để mở rộng chi tiết 3 Case Study & Khung giải pháp STAR phản biện"):
+        with st.expander("🔍 Nhấp để mở rộng chi tiết 3 Case Study & Gợi ý khung giải pháp STAR phản biện"):
             st.markdown(st.session_state.case_output)
 
-    # --- HỆ THỐNG NÚT EXPORT KHÔNG LƯU TRỮ TRÊN SERVER ---
+    # --- HỆ THỐNG NÚT EXPORT KHÔNG CẦN ĐĂNG NHẬP ---
     st.divider()
     st.write("### 💾 Tải xuống kết quả thành phẩm")
     
-    # Khối dữ liệu hợp nhất để đóng gói tệp
+    # Hợp nhất toàn bộ dữ liệu hiện hành sau khi chỉnh sửa
     full_export_content = f"# BỘ HỒ SƠ ỨNG TUYỂN CHIẾN LƯỢC\n\n## 1. CV CHI TIẾT\n{cv_edit}\n\n## 2. COVER LETTER\n{cover_edit}\n\n## 3. KỊCH BẢN PHỎNG VẤN HỆ THỐNG\n{st.session_state.raw_output}\n\n## 4. BỘ CASE STUDY THỰC ĐỊA\n{st.session_state.case_output}"
     
     col_d1, col_d2, col_d3 = st.columns(3)
@@ -285,7 +309,7 @@ elif st.session_state.step == 4:
         st.download_button("⬇️ Xuất bản sạch PDF (.pdf)", data=pdf_data, file_name="FromCVtoJob_FinalSuite.pdf", mime="application/pdf")
     with col_d3:
         if st.button("🔄 Làm hồ sơ mới từ đầu"):
-            # Xóa sạch trạng thái phiên cũ để khởi động lại
+            # Clear bộ nhớ phiên làm việc để khởi tạo từ đầu
             for key in ["step", "cv_text", "raw_output", "case_output", "answers", "strat_res_cache"]:
                 if key in st.session_state:
                     del st.session_state[key]
