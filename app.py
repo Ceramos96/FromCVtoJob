@@ -4,7 +4,6 @@ import re
 import os
 import io
 import time
-import urllib.request
 from PIL import Image
 from fpdf import FPDF
 
@@ -26,8 +25,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-FONT_PATH = "DejaVuSans.ttf"
-FONT_URL = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf"
+# Path font hệ thống Linux chuẩn hóa trên Streamlit Cloud
+LINUX_FONT_PATH = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
 
 # ============================================================================
 # 1. MASTER SYSTEM PROMPT (TƯ DUY ĐỊNH VỊ SENIOR+2 & BỘ CÂU HỎI MCKINSEY)
@@ -96,7 +95,6 @@ def parse_application_suite(raw_text):
     sections = ["CV", "COVER", "HR", "MANAGER", "HEAD"]
     parsed_data = {s: "Nội dung chưa được khởi tạo." for s in sections}
     
-    # Loại bỏ các ký tự bọc block code thừa nếu có
     clean_raw = raw_text.replace("```markdown", "").replace("```", "")
     pattern = r"===([A-Z_]+)==="
     parts = re.split(pattern, clean_raw, flags=re.IGNORECASE)
@@ -111,30 +109,24 @@ def parse_application_suite(raw_text):
 def clean_txt_for_pdf(text):
     if not text:
         return ""
-    # Chuẩn hóa triệt để các dấu câu lạ sinh ra lỗi Unicode trong FPDF2
+    # Chuẩn hóa triệt để dấu ngoặc kép và gạch ngang AI hay sinh ra
     text = text.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
     text = text.replace("–", "-").replace("—", "-").replace("•", "-")
-    # Sử dụng Regex lọc bỏ hoàn toàn dải ký tự đồ họa lạ và các icon emoji
-    text = re.sub(r'[^\x00-\x7F\u00C0-\u1EF9\s\-\.\,\:\!\?\' Sourc\"\( \)\_\+\=\/\@\#\$\%\^\&\*]', '', text)
+    # Lọc bỏ triệt để các mã emoji, ký tự lạ ngoài bảng Unicode Latin + Việt Nam mở rộng
+    text = re.sub(r'[^\x00-\x7F\u00C0-\u1EF9\s\-\.\,\:\!\?\'\"\( \)\_\+\=\/\@\#\$\%\^\&\*]', '', text)
     return text
-
-@st.cache_resource(show_spinner=False)
-def ensure_unicode_font():
-    if not os.path.exists(FONT_PATH):
-        try: urllib.request.urlretrieve(FONT_URL, FONT_PATH)
-        except: pass
-    return FONT_PATH if os.path.exists(FONT_PATH) else None
 
 def export_suite_to_pdf(markdown_text):
     pdf = FPDF(format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     
-    font_file = ensure_unicode_font()
-    if font_file:
-        pdf.add_font("DejaVuSans", style="", fname=font_file)
-        font_family = "DejaVuSans"
+    # Nạp font hệ thống có sẵn của Linux trên Cloud (Bỏ hoàn toàn download online)
+    if os.path.exists(LINUX_FONT_PATH):
+        pdf.add_font("CustomSans", style="", fname=LINUX_FONT_PATH)
+        font_family = "CustomSans"
     else:
+        # Dự phòng khẩn cấp nếu chạy local Windows/macOS không có đường dẫn Linux trên
         font_family = "Helvetica"
     
     pdf.set_font(font_family, style="", size=11)
@@ -161,7 +153,7 @@ def export_suite_to_pdf(markdown_text):
     return bytes(pdf.output())
 
 # ============================================================================
-# 3. LUỒNG GIAO DIỆN STATE MACHINE CHẶT CHẼ
+# 3. LUỒNG GIAO DIỆN STATE MACHINE
 # ============================================================================
 if 'step' not in st.session_state: st.session_state.step = 1
 if 'cv_text' not in st.session_state: st.session_state.cv_text = ""
@@ -230,7 +222,7 @@ elif st.session_state.step == 3:
     if "strat_res_cache" not in st.session_state:
         with st.spinner("Đang xây dựng sơ đồ khoảng cách ứng tuyển và định vị Senior+2..."):
             model = init_gemini(selected_model)
-            prompt_strat = f"Hãy tạo ĐÚNG mục phân tích chiến lược: Điểm mạnh (Strengths), Điểm thiếu hụt (Gaps), Từ khóa ATS (Keywords) và Narrative Hook. Tuyệt đối không viết nội dung CV hay Cover Letter tại đây. JD: {st.session_state.jd}, CV: {st.session_state.cv_text}, Câu trả lời: {st.session_state.answers}"
+            prompt_strat = f"Hãy tạo một bảng phân tích chiến lược: 3-5 điểm mạnh, 1-2 điểm thiếu hụt so với JD, danh sách từ khóa ATS chuẩn ngành, và 1 đoạn Narrative Hook (2-3 câu định vị Senior+2). JD: {st.session_state.jd}, CV: {st.session_state.cv_text}, Câu trả lời: {st.session_state.answers}"
             time.sleep(1)
             st.session_state.strat_res_cache = model.generate_content(prompt_strat).text
 
@@ -248,13 +240,11 @@ elif st.session_state.step == 3:
             with st.spinner("Đang thiết lập bộ hồ sơ song ngữ và kịch bản phỏng vấn chuyên sâu..."):
                 model = init_gemini(selected_model)
                 
-                # Gọi dựng bộ hồ sơ lõi theo đúng cấu trúc delimiters
                 build_prompt = f"Generate the full application suite using the strict delimiters defined in the system prompt. DO NOT invent names or fake candidate info. Focus entirely on the matching logic. Base Data - JD: {st.session_state.jd}, CV: {st.session_state.cv_text}, Answers: {st.session_state.answers}. Format constraints: {st.session_state.extra_req}"
                 st.session_state.raw_output = model.generate_content(build_prompt).text
                 
-                time.sleep(2) # Giãn cách bảo vệ Quota API
+                time.sleep(2)
                 
-                # Gọi dựng 3 Case Study độc lập
                 case_prompt = f"Dựa trên mô tả công việc (JD): {st.session_state.jd}, hãy thiết kế đúng 3 bài toán Case Study thực tế cấp Senior trong 6 tháng đầu việc. Mỗi case gồm: Đề bài, Hướng tiếp cận (Framework), Giải pháp mẫu (STAR), và 3 câu hỏi phản biện."
                 st.session_state.case_output = model.generate_content(case_prompt).text
                 
@@ -282,7 +272,7 @@ elif st.session_state.step == 4:
         cover_edit = st.text_area("Sửa nội dung Cover Letter (<1000 ký tự):", value=parsed_suite["COVER"], height=300)
         
     with tab_interview:
-        st.markdown("### 💬 Chuẩn bị kịch bản phản biện chuyên sâu")
+        st.markdown("### 💬 Chuẩn bị kịch bản phỏng vấn và câu hỏi phản biện")
         st.markdown(f"#### 👥 Vòng 1: Nhân sự (HR Round)\n{parsed_suite['HR']}")
         st.markdown(f"#### 👔 Vòng 2: Sếp trực tiếp (Manager Round)\n{parsed_suite['MANAGER']}")
         st.markdown(f"#### 🎯 Vòng 3: Trưởng bộ phận (Department Head Round)\n{parsed_suite['HEAD']}")
