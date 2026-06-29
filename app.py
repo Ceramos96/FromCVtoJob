@@ -75,8 +75,8 @@ def check_rate_limit():
     
     current_time = time.time()
     if current_time - st.session_state.last_req_time < 3600:
-        if st.session_state.req_count >= 10:
-            st.error("Bạn đã đạt giới hạn 10 lượt tạo/giờ cho phiên này. Vui lòng quay lại sau!")
+        if st.session_state.req_count >= 15:
+            st.error("Bạn đã đạt giới hạn cuộc gọi tối đa trong phiên này. Vui lòng quay lại sau!")
             st.stop()
     else:
         st.session_state.req_count = 0
@@ -109,10 +109,8 @@ def parse_application_suite(raw_text):
 def clean_txt_for_pdf(text):
     if not text:
         return ""
-    # Chuẩn hóa triệt để dấu ngoặc kép và gạch ngang AI hay sinh ra
     text = text.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
     text = text.replace("–", "-").replace("—", "-").replace("•", "-")
-    # Lọc bỏ triệt để các mã emoji, ký tự lạ ngoài bảng Unicode Latin + Việt Nam mở rộng
     text = re.sub(r'[^\x00-\x7F\u00C0-\u1EF9\s\-\.\,\:\!\?\'\"\( \)\_\+\=\/\@\#\$\%\^\&\*]', '', text)
     return text
 
@@ -121,12 +119,10 @@ def export_suite_to_pdf(markdown_text):
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     
-    # Nạp font hệ thống có sẵn của Linux trên Cloud (Bỏ hoàn toàn download online)
     if os.path.exists(LINUX_FONT_PATH):
         pdf.add_font("CustomSans", style="", fname=LINUX_FONT_PATH)
         font_family = "CustomSans"
     else:
-        # Dự phòng khẩn cấp nếu chạy local Windows/macOS không có đường dẫn Linux trên
         font_family = "Helvetica"
     
     pdf.set_font(font_family, style="", size=11)
@@ -153,7 +149,7 @@ def export_suite_to_pdf(markdown_text):
     return bytes(pdf.output())
 
 # ============================================================================
-# 3. LUỒNG GIAO DIỆN STATE MACHINE
+# 3. LUỒNG GIAO DIỆN STATE MACHINE CHẶT CHẼ
 # ============================================================================
 if 'step' not in st.session_state: st.session_state.step = 1
 if 'cv_text' not in st.session_state: st.session_state.cv_text = ""
@@ -215,7 +211,7 @@ elif st.session_state.step == 2:
             st.session_state.step = 3
             st.rerun()
 
-# --- BƯỚC 3: STRATEGY CHECKPOINT ---
+# --- BƯỚC 3: STRATEGY CHECKPOINT (CACHE KHÓA CHỐNG TRÙNG LẶP REQUEST) ---
 elif st.session_state.step == 3:
     st.subheader("🎯 Bước 3: Sơ đồ khoảng cách chiến lược (Gap Map)")
     
@@ -237,24 +233,26 @@ elif st.session_state.step == 3:
             st.rerun()
     with col_c2:
         if st.button("Đồng ý — Tiến hành tạo bộ hồ sơ hoàn chỉnh 🔥"):
-            with st.spinner("Đang thiết lập bộ hồ sơ song ngữ và kịch bản phỏng vấn chuyên sâu..."):
-                model = init_gemini(selected_model)
-                
-                build_prompt = f"Generate the full application suite using the strict delimiters defined in the system prompt. DO NOT invent names or fake candidate info. Focus entirely on the matching logic. Base Data - JD: {st.session_state.jd}, CV: {st.session_state.cv_text}, Answers: {st.session_state.answers}. Format constraints: {st.session_state.extra_req}"
-                st.session_state.raw_output = model.generate_content(build_prompt).text
-                
-                time.sleep(2)
-                
-                case_prompt = f"Dựa trên mô tả công việc (JD): {st.session_state.jd}, hãy thiết kế đúng 3 bài toán Case Study thực tế cấp Senior trong 6 tháng đầu việc. Mỗi case gồm: Đề bài, Hướng tiếp cận (Framework), Giải pháp mẫu (STAR), và 3 câu hỏi phản biện."
-                st.session_state.case_output = model.generate_content(case_prompt).text
-                
-                st.session_state.step = 4
-                st.rerun()
+            # Chuyển tiếp sang bước tạo dữ liệu, việc gọi API nặng sẽ được xử lý biệt lập ở Bước 4 khi tab khởi tạo
+            st.session_state.step = 4
+            st.rerun()
 
-# --- BƯỚC 4: PREVIEW, EDIT & EXPORT ---
+# --- BƯỚC 4: PREVIEW, EDIT & EXPORT (CHỐNG TRÙNG GỌI LẠI TRÊN CORE SUITE) ---
 elif st.session_state.step == 4:
     st.subheader("✨ Bước 4: Tinh chỉnh thủ công & Xuất thành phẩm")
     
+    # Bảo vệ Quota tuyệt đối: Chỉ sinh nội dung Suite & Case Study một lần duy nhất khi đặt chân vào Step 4
+    if not st.session_state.raw_output:
+        with st.spinner("Đang may đo bộ hồ sơ song ngữ theo Contract phân tách..."):
+            model = init_gemini(selected_model)
+            build_prompt = f"Generate the full application suite using the strict delimiters defined in the system prompt. DO NOT invent names or fake candidate info. Focus entirely on the matching logic. Base Data - JD: {st.session_state.jd}, CV: {st.session_state.cv_text}, Answers: {st.session_state.answers}. Format constraints: {st.session_state.extra_req}"
+            st.session_state.raw_output = model.generate_content(build_prompt).text
+            
+            time.sleep(2) # Khoảng trễ an toàn giữa 2 luồng lớn
+            
+            case_prompt = f"Dựa trên mô tả công việc (JD): {st.session_state.jd}, hãy thiết kế đúng 3 bài toán Case Study thực tế cấp Senior trong 6 tháng đầu việc. Mỗi case gồm: Đề bài, Hướng tiếp cận (Framework), Giải pháp mẫu (STAR), và 3 câu hỏi phản biện."
+            st.session_state.case_output = model.generate_content(case_prompt).text
+
     parsed_suite = parse_application_suite(st.session_state.raw_output)
     
     tab_cv, tab_cover, tab_interview, tab_case = st.tabs(["📄 CV 1 Trang (Split View)", "✉️ Thư xin việc (Cover Letter)", "💬 Kịch bản phỏng vấn 60 phút", "💼 Case Studies Cấp cao"])
